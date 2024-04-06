@@ -1,0 +1,69 @@
+import pandas as pd
+import numpy as np
+import os
+import matplotlib.pyplot as plt
+import docx
+
+# Set file paths
+fpath_S = r"C:\Users\asus\Desktop\lit. Review\Data\Stations Speed"
+path_ = r'C:\Users\asus\Desktop\lit. Review\Data\summary'
+
+# Read and process data
+filenames = os.listdir(fpath_S)
+station_ID = list(set(i.split('_')[0] for i in filenames))
+station_ID.remove('complete')
+
+# Read CCS Sites data
+CCS_Sites = pd.read_excel(r'C:\Users\asus\Desktop\lit. Review\Data\CCS Sites.xlsx')
+geometric = pd.read_excel(r'C:\Users\asus\Desktop\lit. Review\Data\Element Geometric Data.xlsx', skiprows=1)
+CCS_Sites.set_index('Element ID', inplace=True)
+geometric.set_index('Element ID', inplace=True)
+geometric = geometric.drop(geometric.columns[20:], axis=1)
+
+# Merge CCS Sites and Geometric data
+Geometry = CCS_Sites.merge(geometric, how='left', left_index=True, right_index=True)
+Geometry.reset_index(inplace=True)
+Geometry = Geometry.set_index(['Site ID'])
+
+# Create Summary DataFrame
+col = ['Station ID', 'Road Name', 'Speed Limit', 'Number of Lanes', 'Lane Width', 'Shoulder Width', 'Area Type', "Pavement Width"]
+Summary = pd.DataFrame(index=station_ID, columns=col)
+Summary['Station ID'] = Summary.index
+Summary.reset_index(inplace=True, drop=True)
+
+# Populate Summary DataFrame
+for j in range(len(station_ID)):
+    Summary.loc[Summary['Station ID'] == station_ID[j], 'Number of Lanes'] = Geometry.loc[int(station_ID[j])]['Lane Count']
+    Summary.loc[Summary['Station ID'] == station_ID[j], 'Speed Limit'] = Geometry.loc[int(station_ID[j])]['Speed Limit (mph)']
+    Summary.loc[Summary['Station ID'] == station_ID[j], 'Shoulder Width'] = Geometry.loc[int(station_ID[j])]['Shoulder Width - Left']
+    Summary.loc[Summary['Station ID'] == station_ID[j], 'Area Type'] = Geometry.loc[int(station_ID[j])]['State Urban - Rural Descr']
+    Summary.loc[Summary['Station ID'] == station_ID[j], 'Road Name'] = Geometry.loc[int(station_ID[j])]['Description']
+    Summary.loc[Summary['Station ID'] == station_ID[j], 'Pavement Width'] = Geometry.loc[int(station_ID[j])]['Total Pavement Width']
+
+# Sort and reset Summary DataFrame
+Summary.sort_values(by=['Speed Limit'], inplace=True)
+Summary.reset_index(inplace=True, drop=True)
+Summary['Lane Width'] = Summary['Pavement Width'] / Summary['Number of Lanes']
+Summary['Lane Width'] = Summary['Lane Width'].apply(np.round) 
+
+# Modify 'Area Type' column values
+Summary.loc[Summary['Area Type'] == 'Urban', 'Area Type'] = 1
+Summary.loc[Summary['Area Type'] == 'Rural', 'Area Type'] = 0
+
+# Generate description statistics and save to Excel
+col = Summary.columns.tolist()
+col.remove('Road Name')
+col.remove('Station ID')
+description = Summary[col]
+description[col] = description[col].astype(float)
+des = description.describe()
+des = des[col].apply(lambda x: pd.Series.round(x, 3))
+des = des.reset_index()
+des = des.T
+col = des.loc['index']
+des.columns = col
+des.drop('index')
+
+# Save summary data to Excel
+des.to_excel(os.path.join(path_, 'des'+".xlsx"))
+Summary.to_excel(os.path.join(path_, 'Summary'+".xlsx"))

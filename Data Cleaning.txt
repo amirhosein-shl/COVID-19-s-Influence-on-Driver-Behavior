@@ -1,0 +1,84 @@
+import pandas as pd
+import numpy as np
+# Read CCS Sites data
+CCS_Sites = pd.read_excel(r"C:\Users\asus\Desktop\lit. Review\Data\CCS Sites.xlsx")
+# Extract unique Site IDs
+Site_ID = CCS_Sites['Site ID'].unique()
+
+import os
+import win32com.client as win32
+
+# Convert .xls files to .xlsx
+path_S = r"C:\Users\asus\Desktop\lit. Review\Data\Speed Charts"
+final_path_S = r"C:\Users\asus\Desktop\lit. Review\Data\Speed"
+for file in os.listdir(path_S):
+    excel = win32.gencache.EnsureDispatch('Excel.Application')
+    wb = excel.Workbooks.Open(path_S+"\\"+ file)
+    wb.SaveAs(final_path_S+"\\"+ file+"x", FileFormat = 51)
+    wb.Close()
+excel.Application.Quit()
+
+from openpyxl import load_workbook
+
+# Convert data in .xlsx files
+final_path_S = r"C:\Users\asus\Desktop\lit. Review\Data\Speed"
+filenames_S = os.listdir(final_path_S)
+station_ID_S = list(set(i.split('_')[0] for i in filenames_S))
+
+for prefix_S in station_ID_S:
+    n_S = 0  
+    a_S = []
+    for file_S in filenames_S:
+        if file_S.startswith(prefix_S):
+            a_S.append(pd.read_excel(os.path.join(final_path_S, file_S)))
+            index=a_S[n_S].index[a_S[n_S][a_S[n_S].columns[0]]=='All directions']
+            a_S[n_S] = a_S[n_S].iloc[index[0]+1:]
+            a_S[n_S].columns = a_S[n_S].iloc[0]
+            a_S[n_S] = a_S[n_S].drop(a_S[n_S].index[0])
+            a_S[n_S] = a_S[n_S].reset_index(drop=True)
+
+            days_S = a_S[n_S].columns
+            dates_S = a_S[n_S].iloc[0].values
+
+            col_S = []
+            for i in range(len(days_S)):
+                try:
+                    col_S.append(days_S[i] +" "+ dates_S[i])
+                except:
+                    col_S.append(days_S[i])
+            col_S[0] = "Time" 
+            a_S[n_S].columns = col_S
+            a_S[n_S] = a_S[n_S].drop(0)
+            a_S[n_S].reset_index(inplace=True)
+            a_S[n_S] = a_S[n_S].drop(['index'], axis=1)
+            n_S+=1
+    result_S = pd.concat(a_S, axis=1)
+
+    fpath_S = r"C:\Users\asus\Desktop\lit. Review\Data\Stations Speed"
+    All_Direction = result_S.iloc[0:288]
+    sheetName2 = result_S.iloc[293]['Time'][0]
+    All_Eastbound = result_S.iloc[296:584]
+    sheetName3 = result_S.iloc[589]['Time'][0]
+    All_Westbound = result_S.iloc[592:880]
+    sheetName4 = result_S.iloc[885]['Time'][0]
+    Ln_1_EB_Slow = result_S.iloc[888:1176]
+
+    # Write processed data to separate sheets in Excel
+    All_Direction.to_excel(os.path.join(fpath_S,prefix_S+"_speed_"+".xlsx"), sheet_name='All_Direction')
+    book = load_workbook(os.path.join(fpath_S,prefix_S+"_speed_"+".xlsx"))
+    writer = pd.ExcelWriter(os.path.join(fpath_S,prefix_S+"_speed_"+".xlsx"), engine = 'openpyxl')
+    writer.book = book
+    All_Eastbound.to_excel(writer, sheet_name=sheetName2)
+    All_Westbound.to_excel(writer, sheet_name=sheetName3)
+    Ln_1_EB_Slow.to_excel(writer, sheet_name=sheetName4)
+    if result_S.shape[0]-200>1176 :
+        sheetName5 = result_S.iloc[1181]['Time'][0]
+        Ln_2_EB_Fast = result_S.iloc[1184:1472]
+        Ln_2_EB_Fast.to_excel(writer, sheet_name=sheetName5)
+    if result_S.shape[0]-200>1472 :
+        sheetName6 = result_S.iloc[1477]['Time'][0]
+        Ln_3_EB_Fast = result_S.iloc[1480:1768]
+        Ln_3_EB_Fast.to_excel(writer, sheet_name=sheetName6)
+
+    writer.save()
+    writer.close()

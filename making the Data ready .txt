@@ -1,0 +1,110 @@
+import pandas as pd
+import numpy as np
+import os
+import itertools
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+from sklearn.model_selection import train_test_split
+from sklearn import metrics
+
+# Read Geometry data
+Geometry = pd.read_excel(r'C:\Users\$r.930997\Desktop\Research\Data\Geometry.xlsx')
+Geometry = Geometry.set_index(['Site ID']) 
+
+# Set display options
+pd.options.mode.chained_assignment = None
+pd.set_option('display.max_columns', 500)
+
+# Read data from CSV files
+path = r'C:\Users\$r.930997\Desktop\After Covid\R data\New folder'
+major = pd.read_csv(os.path.join(path, 'major.csv'))
+minor = pd.read_csv(os.path.join(path, 'minor.csv'))
+other = pd.read_csv(os.path.join(path, 'other.csv'))
+
+# Set index to 'DateAndTime' column and convert index to datetime
+major.set_index(['DateAndTime'], inplace=True)
+minor.set_index(['DateAndTime'], inplace=True)
+other.set_index(['DateAndTime'], inplace=True)
+major.index = pd.to_datetime(major.index)
+minor.index = pd.to_datetime(minor.index)
+other.index = pd.to_datetime(other.index)
+
+# Set paths for vaccination and unemployment data
+vaccin_path = r'C:\Users\$r.930997\Desktop\After Covid\data\Vaccination'
+unemp_filing_path = r'C:\Users\$r.930997\Desktop\After Covid'
+
+# Read vaccination and unemployment data
+df_vaccin = pd.read_csv(os.path.join(vaccin_path, 'COVID-19_Vaccinations_in_the_United_States_County.csv'))
+df_unemp_filing = pd.read_excel(os.path.join(unemp_filing_path, 'unemployment.xlsx'))
+
+# Set index to 'Date' column and convert index to datetime
+df_vaccin.set_index(['Date'], inplace=True)
+df_vaccin.index = pd.to_datetime(df_vaccin.index)
+
+# Aggregate vaccination data
+df_vaccin = df_vaccin.groupby(df_vaccin.index).sum()
+df_vaccin['vaccination'] = df_vaccin['Series_Complete_Yes'] - df_vaccin['Series_Complete_Yes'].shift(1)
+df_vaccin = df_vaccin[['vaccination']]
+
+# Set column names for unemployment data
+df_unemp_filing.columns = ['Date', 'rate']
+
+# Set index to 'Date' column and convert index to datetime
+df_unemp_filing.set_index(['Date'], inplace=True)
+df_unemp_filing.index = pd.to_datetime(df_unemp_filing.index)
+
+# Expand unemployment data to daily frequency
+sdate = df_unemp_filing.index[0]
+edate = df_unemp_filing.index[-1]
+edate = edate + timedelta(days=6)
+dates = pd.date_range(sdate, edate, freq='d')
+df_unemp_filing = df_unemp_filing.loc[np.repeat(df_unemp_filing.index.values, 7)]
+df_unemp_filing.index = dates
+
+# Process 'major', 'minor', and 'other' dataframes
+major['date'] = major.index.date
+minor['date'] = minor.index.date
+other['date'] = other.index.date
+major.reset_index(inplace=True)
+major.set_index(['date'], inplace=True)
+minor.reset_index(inplace=True)
+minor.set_index(['date'], inplace=True)
+other.reset_index(inplace=True)
+other.set_index(['date'], inplace=True)
+
+# Merge dataframes with unemployment and vaccination data
+def merge_data(df):
+    merged_df = pd.merge(left=df, left_index=True, right=df_unemp_filing, right_index=True, how='left')
+    merged_df = pd.merge(left=merged_df, left_index=True, right=df_vaccin, right_index=True, how='left')
+    merged_df = merged_df.fillna(0)
+    merged_df = merged_df.sort_values(by=['id', 'DateAndTime'])
+    merged_df.set_index(['DateAndTime'], inplace=True)
+    merged_df.drop(['durCovid*Covid', 'durCovid*unemp', 'lnvolume*Covid', 'lnvolume*unemp', 'aftCovid*unemp', 'aftCovid*Covid'], axis=1, inplace=True)
+    return merged_df
+
+# Process 'major', 'minor', and 'other' dataframes
+merged_major = merge_data(major)
+merged_minor = merge_data(minor)
+merged_other = merge_data(other)
+
+# Save processed dataframes to CSV files
+path = r'C:\Users\$r.930997\Desktop\After Covid\R data\New folder'
+merged_major.to_csv(os.path.join(path, 'major.csv'))
+merged_minor.to_csv(os.path.join(path, 'minor.csv'))
+merged_other.to_csv(os.path.join(path, 'other.csv'))
+
+def fractional(X, y):
+    """
+    Performs fractional
+	X = sm.add_constant(X)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state = 0)
+    model = sm.Logit(y_train, X_train.astype(float))
+    results = model.fit(cov_type='HC0')
+    params = results.params
+    pvals = results.pvalues#[0]
+    std = results.summary2().tables[1]['Std.Err.']
+    AIC = results.summary2().tables[0].iloc[1,3]
+    BIC = results.summary2().tables[0].iloc[2,3]
+    Log_liklihood = results.summary2().tables[0].iloc[3,3]
+#     print(results.summary())
+    return(params, std, AIC, BIC, Log_liklihood)
